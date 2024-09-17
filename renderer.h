@@ -8,7 +8,7 @@ void PrintLabeledDebugString(const char* label, const char* toPrint)
 {
 	std::cout << label << toPrint << std::endl;
 
-//OutputDebugStringA is a windows-only function 
+	//OutputDebugStringA is a windows-only function 
 #if defined WIN32 
 	OutputDebugStringA(label);
 	OutputDebugStringA(toPrint);
@@ -27,7 +27,7 @@ class Renderer
 	GW::GRAPHICS::GVulkanSurface vlk;
 	VkRenderPass renderPass;
 	GW::CORE::GEventReceiver shutdown;
-	
+
 	// what we need at a minimum to draw a triangle
 	VkDevice device = nullptr;
 	VkPhysicalDevice physicalDevice = nullptr;
@@ -41,30 +41,28 @@ class Renderer
 	unsigned int windowWidth, windowHeight;
 
 	// TODO: Part 1c
-	 
+
 	// TODO: Part 2a
+	GW::MATH::GMatrix math;
 	GW::MATH::GMATRIXF worldMatrix;
-	GW::MATH::GMatrix mathProxy;
+
 	// TODO: Part 2b
 	struct SHADER_VARS
 	{
 		GW::MATH::GMATRIXF worldMatrix;
-		float padding[32]; // 32 floats * 4 bytes = 128 bytes of padding
+		float padding[44]; // Pad to 128 bytes (16 floats in GMATRIXF + 44 floats = 60 floats = 240 bytes)
 	};
-
-
-		// TODO: Part 3a
-		// TODO: Part 3f 
-	// TODO: Part 2c 
+	// TODO: Part 3a
+	// TODO: Part 3f 
+// TODO: Part 2c // TODO: Part 4y
 	std::vector<VkBuffer> uniformBuffers;
-	std::vector<VkDeviceMemory> uniformBuffersMemory;	
-	// // TODO: Part 4y
+	std::vector<VkDeviceMemory> uniformBuffersMemory;
 	// TODO: Part 2e
-	VkDescriptorSetLayout descriptorSetLayout; 
+	VkDescriptorSetLayout descriptorSetLayout;
 	// TODO: Part 2f
 	VkDescriptorPool descriptorPool;
 	// TODO: Part 2g
-	VkDescriptorSet descriptorSet; 
+	VkDescriptorSet descriptorSet;
 	// TODO: Part 3c
 	// TODO: Part 3d
 	// TODO: Part 4a
@@ -76,11 +74,10 @@ public:
 		vlk = _vlk;
 
 		// TODO: Part 2a
-		mathProxy.Create();
+		math.Create();
 		InitializeWorldMatrix();
 
 		// TODO: Part 2e
-		CreatePipelineLayout(); 
 		// TODO: Part 3a
 		// TODO: Part 3c
 		// TODO: Part 3d
@@ -89,56 +86,70 @@ public:
 		UpdateWindowDimensions();
 		InitializeGraphics();
 		BindShutdownCallback();
-
 	}
 
 private:
-	// SELF ADDED	part 2a
-    #include <cmath>
-	#include <corecrt_math_defines.h>
 
-    void InitializeWorldMatrix()
-    {
-					// Start with an identity matrix
-					mathProxy.IdentityF(worldMatrix);
 
-					// Rotate 90 degrees around X axis
-					// Convert 90 degrees to radians
-					double rotationAngle = 90.0 * (M_PI / 180.0);
-					GW::MATH::GMATRIXF rotationMatrix;
-					mathProxy.RotateXGlobalF(worldMatrix, rotationAngle, rotationMatrix);
 
-					// Translate down the Y axis by 0.5 units
-					GW::MATH::GVECTORF translationVector = { 0.0f, -0.5f, 0.0f, 0.0f };
-					GW::MATH::GMATRIXF translatedMatrix;
-					mathProxy.TranslateGlobalF(rotationMatrix, translationVector, translatedMatrix);
 
-					// Convert the result back to GMATRIXF
-					worldMatrix = translatedMatrix;
-    }
-	// self added  : part 2d 
-	void InitializeUniformBuffers()
+#include <cmath>
+#include <corecrt_math_defines.h>
+	// part 2a 
+	void InitializeWorldMatrix()
+	{
+		GW::MATH::GMATRIXF   rotationMatrix, translatedMatrix;
+
+		// Start with an identity matrix
+		math.IdentityF(worldMatrix);  // or IdentityD if needed for GMATRIXD
+
+		// Convert 90 degrees to radians for double precision
+		float rotationAngle = 90.0 * (M_PI / 180.0);
+
+		// Rotate the matrix 90 degrees around the X axis (local rotation)
+		math.RotateXLocalF(worldMatrix, rotationAngle, rotationMatrix);
+
+		// Create a translation vector for Y axis translation (-0.5 units)
+		GW::MATH::GVECTORF translationVector = { 0.0, -0.5, 0.0, 0.0 };
+
+		// Apply the translation to the rotated matrix
+		math.TranslateLocalF(rotationMatrix, translationVector, translatedMatrix);
+
+		// Store the final result in worldMatrix
+		worldMatrix = translatedMatrix;
+	}
+
+
+
+	// part 2c self 
+	void CreateUniformBuffers()
 	{
 		VkDeviceSize bufferSize = sizeof(SHADER_VARS);
 
-		// Get the max number of frames that could be in flight at once
-		unsigned int maxFramesInFlight;
-		vlk.GetSwapchainImageCount(maxFramesInFlight);
+		unsigned int imageCount;
+		if (vlk.GetSwapchainImageCount(imageCount) != GW::GReturn::SUCCESS) {
+			throw std::runtime_error("Failed to get swapchain image count");
+		}
 
-		// Resize our vectors to accommodate all possible frames in flight
-		uniformBuffers.resize(maxFramesInFlight);
-		uniformBuffersMemory.resize(maxFramesInFlight);
+		uniformBuffers.resize(imageCount);
+		uniformBuffersMemory.resize(imageCount);
 
-		// Create a uniform buffer for each possible frame in flight
-		for (size_t i = 0; i < maxFramesInFlight; i++)
+		for (size_t i = 0; i < imageCount; i++)
 		{
-			GvkHelper::create_buffer(physicalDevice, device, bufferSize,
-				VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+			if (GvkHelper::create_buffer(physicalDevice, device, bufferSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
 				VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-				&uniformBuffers[i], &uniformBuffersMemory[i]);
+				&uniformBuffers[i], &uniformBuffersMemory[i]) != VK_SUCCESS) {
+				throw std::runtime_error("Failed to create uniform buffer");
+			}
 		}
 	}
-	// self added :  2e 
+	
+	void UpdateWindowDimensions()
+	{
+		win.GetClientWidth(windowWidth);
+		win.GetClientHeight(windowHeight);
+	}
+	//part 2e self
 	void CreateDescriptorSetLayout()
 	{
 		VkDescriptorSetLayoutBinding layoutBinding{};
@@ -146,39 +157,37 @@ private:
 		layoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
 		layoutBinding.descriptorCount = 1;
 		layoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
-		layoutBinding.pImmutableSamplers = nullptr;
 
 		VkDescriptorSetLayoutCreateInfo layoutInfo{};
 		layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
 		layoutInfo.bindingCount = 1;
 		layoutInfo.pBindings = &layoutBinding;
 
-		if (vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &descriptorSetLayout) != VK_SUCCESS) {
-			throw std::runtime_error("failed to create descriptor set layout!");
+		if (vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &descriptorSetLayout) != VK_SUCCESS)
+		{
+			throw std::runtime_error("Failed to create descriptor set layout!");
 		}
 	}
-
-	// self added part 2f
+	// 2f self 
 	void CreateDescriptorPool()
 	{
-		VkDescriptorPoolSize poolSize{};  
-		poolSize.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER; 
-		poolSize.descriptorCount = 1; 
+		VkDescriptorPoolSize poolSize{};
+		poolSize.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+		poolSize.descriptorCount = 1;
 
-		VkDescriptorPoolCreateInfo poolInfo{}; 
-		poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO; 
-		poolInfo.poolSizeCount = 1; 
-		poolInfo.pPoolSizes = &poolSize; 
-		poolInfo.maxSets = 1; 
-		poolInfo.flags = 0; // Default flag 
-		 
-		if (vkCreateDescriptorPool(device, &poolInfo, nullptr, &descriptorPool) != VK_SUCCESS) {
-			throw std::runtime_error("failed to create descriptor pool!");
+		VkDescriptorPoolCreateInfo poolInfo{};
+		poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+		poolInfo.poolSizeCount = 1;
+		poolInfo.pPoolSizes = &poolSize;
+		poolInfo.maxSets = 1;
+
+		if (vkCreateDescriptorPool(device, &poolInfo, nullptr, &descriptorPool) != VK_SUCCESS)
+		{
+			throw std::runtime_error("Failed to create descriptor pool!");
 		}
 	}
-
-	// self added part 2g
-	void AllocateDescriptorSet()
+	// 2g self 
+	void CreateDescriptorSet()
 	{
 		VkDescriptorSetAllocateInfo allocInfo{};
 		allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
@@ -186,61 +195,41 @@ private:
 		allocInfo.descriptorSetCount = 1;
 		allocInfo.pSetLayouts = &descriptorSetLayout;
 
-		if (vkAllocateDescriptorSets(device, &allocInfo, &descriptorSet) != VK_SUCCESS) {
-			throw std::runtime_error("failed to allocate descriptor set!");
+		if (vkAllocateDescriptorSets(device, &allocInfo, &descriptorSet) != VK_SUCCESS)
+		{
+			throw std::runtime_error("Failed to allocate descriptor set!");
 		}
 	}
-	// self added part 2h
+	// 2h self 
 	void UpdateDescriptorSet()
-{
-    // We're only updating one descriptor set for now, so we only need one VkDescriptorBufferInfo
-    VkDescriptorBufferInfo bufferInfo{};
-    bufferInfo.buffer = uniformBuffers[0];  // We're using the first uniform buffer for now
-    bufferInfo.offset = 0;
-    bufferInfo.range = sizeof(SHADER_VARS);
-
-    VkWriteDescriptorSet descriptorWrite{};
-    descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    descriptorWrite.dstSet = descriptorSet;
-    descriptorWrite.dstBinding = 0;
-    descriptorWrite.dstArrayElement = 0;
-    descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    descriptorWrite.descriptorCount = 1;
-    descriptorWrite.pBufferInfo = &bufferInfo;
-
-    vkUpdateDescriptorSets(device, 1, &descriptorWrite, 0, nullptr);
-}
-	void UpdateWindowDimensions()
 	{
-		win.GetClientWidth(windowWidth);
-		win.GetClientHeight(windowHeight);
-	}
+		VkDescriptorBufferInfo bufferInfo{};
+		bufferInfo.buffer = uniformBuffers[0];
+		bufferInfo.offset = 0;
+		bufferInfo.range = sizeof(SHADER_VARS);
 
-	void InitializeGraphics()
-	{
-		GetHandlesFromSurface();
-		InitializeVertexBuffer();
-		// TODO: Part 2d
-		InitializeUniformBuffers();
+		VkWriteDescriptorSet descriptorWrite{};
+		descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		descriptorWrite.dstSet = descriptorSet;
+		descriptorWrite.dstBinding = 0;
+		descriptorWrite.dstArrayElement = 0;
+		descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+		descriptorWrite.descriptorCount = 1;
+		descriptorWrite.pBufferInfo = &bufferInfo;
 
-		// 2e 
-		CreateDescriptorSetLayout();
-		// TODO: Part 2f // TODO: Part 4y
-		CreateDescriptorPool(); 
-		// TODO: Part 2g // TODO: Part 4y
-		AllocateDescriptorSet(); 
-		// TODO: Part 2h // TODO: Part 4y
-		UpdateDescriptorSet(); 
-		CompileShaders();
-		InitializeGraphicsPipeline();
+		vkUpdateDescriptorSets(device, 1, &descriptorWrite, 0, nullptr);
 	}
 
 	void GetHandlesFromSurface()
 	{
-		vlk.GetDevice((void**)&device);
+		if (vlk.GetDevice((void**)&device) != GW::GReturn::SUCCESS ||
+			vlk.GetPhysicalDevice((void**)&physicalDevice) != GW::GReturn::SUCCESS) {
+			throw std::runtime_error("Failed to get Vulkan device handles");
+		}
 		vlk.GetPhysicalDevice((void**)&physicalDevice);
 		vlk.GetRenderPass((void**)&renderPass);
 	}
+	
 	void InitializeVertexBuffer()
 	{
 		const int gridDensity = 25;
@@ -270,34 +259,41 @@ private:
 
 		CreateVertexBuffer(verts.data(), sizeof(Vertex) * totalVertices);
 	}
-	//void InitializeVertexBuffer()
-	//{
-	//	// TODO: Part 1b
-	//		
 
-	//	// TODO: Part 1c
-	//	// TODO: Part 1d
-	//	Vertex verts[] =
-	//	{
-	//		// Line 1: from vertex A to vertex B
-	//		0.0f,  0.5f,   // A
-	//		0.5f, -0.5f,   // B
+	void InitializeGraphics()
+	{
+		GetHandlesFromSurface();
+		InitializeVertexBuffer();
+		// TODO: Part 2d
+		CreateUniformBuffers();
+		// 2e self
+		CreateDescriptorSetLayout();
 
-	//		// Line 2: from vertex B to vertex C
-	//		0.5f, -0.5f,   // B
-	//		-0.5f, -0.5f,  // C
+		// TODO: Part 2f // TODO: Part 4y
+		CreateDescriptorPool();
+		// TODO: Part 2g // TODO: Part 4y
+		CreateDescriptorSet();
+		// TODO: Part 2h // TODO: Part 4y 
+		UpdateDescriptorSet();
 
-	//		// Line 3: from vertex C to vertex A
-	//		-0.5f, -0.5f,  // C
-	//		0.0f,  0.5f    // A
-	//	};
+		CompileShaders();
+		InitializeGraphicsPipeline();
+	}
 
-	//	CreateVertexBuffer(&verts[0], sizeof(verts));
-	//}
+	void UpdateUniformBuffer(uint32_t currentImage) {
+		SHADER_VARS shaderVars;
+		shaderVars.worldMatrix = worldMatrix;
+
+		void* data;
+		vkMapMemory(device, uniformBuffersMemory[currentImage], 0, sizeof(shaderVars), 0, &data);
+		memcpy(data, &shaderVars, sizeof(shaderVars));
+		vkUnmapMemory(device, uniformBuffersMemory[currentImage]);
+	}
+
 
 	void CreateVertexBuffer(const void* data, unsigned int sizeInBytes)
 	{
-		GvkHelper::create_buffer(physicalDevice, device, sizeInBytes,VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, 
+		GvkHelper::create_buffer(physicalDevice, device, sizeInBytes, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
 			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
 			&vertexHandle, &vertexData);
 		GvkHelper::write_to_buffer(device, vertexData, data, sizeInBytes); // Transfer triangle data to the vertex buffer. (staging would be prefered here)
@@ -331,7 +327,7 @@ private:
 	void CompileVertexShader(const shaderc_compiler_t& compiler, const shaderc_compile_options_t& options)
 	{
 		std::string vertexShaderSource = ReadFileIntoString("../VertexShader.hlsl");
-		
+
 		shaderc_compilation_result_t result = shaderc_compile_into_spv( // compile
 			compiler, vertexShaderSource.c_str(), vertexShaderSource.length(),
 			shaderc_vertex_shader, "main.vert", "main", options);
@@ -373,7 +369,7 @@ private:
 	// Create Pipeline & Layout (Thanks Tiny!)
 	void InitializeGraphicsPipeline()
 	{
-		VkPipelineShaderStageCreateInfo stage_create_info[2] = {};	
+		VkPipelineShaderStageCreateInfo stage_create_info[2] = {};
 
 		// Create Stage Info for Vertex Shader
 		stage_create_info[0].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
@@ -408,10 +404,10 @@ private:
 		VkPipelineColorBlendAttachmentState color_blend_attachment_state = CreateVkPipelineColorBlendAttachmentState();
 		VkPipelineColorBlendStateCreateInfo color_blend_create_info = CreateVkPipelineColorBlendStateCreateInfo(&color_blend_attachment_state, 1);
 
-		VkDynamicState dynamic_states[2] = 
+		VkDynamicState dynamic_states[2] =
 		{
 			// By setting these we do not need to re-create the pipeline on Resize
-			VK_DYNAMIC_STATE_VIEWPORT, 
+			VK_DYNAMIC_STATE_VIEWPORT,
 			VK_DYNAMIC_STATE_SCISSOR
 		};
 
@@ -436,7 +432,7 @@ private:
 		pipeline_create_info.renderPass = renderPass;
 		pipeline_create_info.subpass = 0;
 		pipeline_create_info.basePipelineHandle = VK_NULL_HANDLE;
-		
+
 		vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipeline_create_info, nullptr, &pipeline);
 	}
 
@@ -599,12 +595,7 @@ private:
 	void CreatePipelineLayout()
 	{
 		// TODO: Part 2e
-		if (descriptorSetLayout == VK_NULL_HANDLE) { 
-			throw std::runtime_error("Descriptor set layout is null!");
-		} 
-		if (device == VK_NULL_HANDLE) {
-			throw std::runtime_error("Device handle is null!");
-		}
+
 		VkPipelineLayoutCreateInfo pipeline_layout_create_info = {};
 		pipeline_layout_create_info.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
 		pipeline_layout_create_info.setLayoutCount = 1; // TODO: Part 2e
@@ -612,8 +603,9 @@ private:
 		pipeline_layout_create_info.pushConstantRangeCount = 0;
 		pipeline_layout_create_info.pPushConstantRanges = nullptr;
 
-		if (vkCreatePipelineLayout(device, &pipeline_layout_create_info, nullptr, &pipelineLayout) != VK_SUCCESS) {
-			throw std::runtime_error("failed to create pipeline layout!");
+		if (vkCreatePipelineLayout(device, &pipeline_layout_create_info, nullptr, &pipelineLayout) != VK_SUCCESS)
+		{
+			throw std::runtime_error("Failed to create pipeline layout!");
 		}
 	}
 
@@ -631,6 +623,10 @@ private:
 public:
 	void Render()
 	{
+		uint32_t currentImageIndex;
+		if (vlk.GetSwapchainCurrentImage(currentImageIndex) != GW::GReturn::SUCCESS) {
+			throw std::runtime_error("Failed to get current swapchain image index");
+		}
 		VkCommandBuffer commandBuffer = GetCurrentCommandBuffer();
 		// TODO: Part 4x
 		SetUpPipeline(commandBuffer);
@@ -638,10 +634,16 @@ public:
 		// TODO: Part 2b
 		SHADER_VARS shaderVars;
 		shaderVars.worldMatrix = worldMatrix;
+
+		void* data;
+		vkMapMemory(device, uniformBuffersMemory[currentImageIndex], 0, sizeof(shaderVars), 0, &data); 
+		memcpy(data, &shaderVars, sizeof(shaderVars));  // Copy the updated data into the uniform buffer
+		vkUnmapMemory(device, uniformBuffersMemory[currentImageIndex]); 
+
 		// TODO: Part 2i // TODO: Part 4y
 		vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &descriptorSet, 0, nullptr);
-		UpdateUniformBuffer();
-		// TODO: Part 3g
+       
+// TODO: Part 3g
 		const int gridDensity = 25;
 		const int totalLines = (gridDensity + 1) * 2;
 		const int verticesPerLine = 2;
@@ -649,16 +651,7 @@ public:
 
 		vkCmdDraw(commandBuffer, totalVertices, 1, 0, 0); // TODO: Part 1b		// changed to 6 points 
 	}
-	void UpdateUniformBuffer()
-	{
-		SHADER_VARS shaderVars;
-		shaderVars.worldMatrix = worldMatrix;
 
-		void* data;
-		vkMapMemory(device, uniformBuffersMemory[0], 0, sizeof(SHADER_VARS), 0, &data);
-		memcpy(data, &shaderVars, sizeof(SHADER_VARS));
-		vkUnmapMemory(device, uniformBuffersMemory[0]);
-	}
 	// TODO: Part 4b
 	// TODO: Part 4c
 	// TODO: Part 4d
@@ -720,14 +713,16 @@ private:
 			vkDestroyBuffer(device, uniformBuffers[i], nullptr);
 			vkFreeMemory(device, uniformBuffersMemory[i], nullptr);
 		}
-		// Part 2e : Self added 
-		vkDestroyDescriptorSetLayout(device, descriptorSetLayout, nullptr); 
-		// TODO: Part 2f
-		vkDestroyDescriptorPool(device, descriptorPool, nullptr); 
 
+		// 2e 
+		vkDestroyDescriptorSetLayout(device, descriptorSetLayout, nullptr);
+		// TODO: Part 2f
+		vkDestroyDescriptorPool(device, descriptorPool, nullptr);
 		vkDestroyShaderModule(device, vertexShader, nullptr);
 		vkDestroyShaderModule(device, fragmentShader, nullptr);
 		vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
 		vkDestroyPipeline(device, pipeline, nullptr);
+
+
 	}
 };
