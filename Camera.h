@@ -83,6 +83,7 @@ GW::MATH::GMATRIXF FreeLookCamera(  GW::SYSTEM::GWindow _window,
     GW::MATH::GMatrix::MultiplyMatrixF(cam, mYaw, cam);
     cam.row4 = pos;
     GW::MATH::GMatrix::InverseF(cam, view);
+
     // row major camera matrix in view space, send to shaders
     return view;
 }

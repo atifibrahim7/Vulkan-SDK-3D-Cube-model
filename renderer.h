@@ -68,6 +68,7 @@ class Renderer
 	VkDescriptorPool descriptorPool;
 	// TODO: Part 2g
 	VkDescriptorSet descriptorSet;
+	std::vector<VkDescriptorSet> descriptorSets;
 	// TODO: Part 3c
 	GW::MATH::GMATRIXF projectionMatrix;
 	// TODO: Part 3d
@@ -164,9 +165,9 @@ private:
 	//self part 3a 
 	void CreateViewMatrix()
 	{
-		GW::MATH::GVECTORF eyePosition = { 1.9f, 1.0f, -1.5f, 1.0f };  // Moved camera back and up
-		GW::MATH::GVECTORF lookAtPoint = { 0.0f, 0.0f, 0.0f, 1.0f }; // Looking towards the origin
-		GW::MATH::GVECTORF upDirection = { 0.0f, 1.0f, 0.0f, 0.0f }; // Up direction vector
+		GW::MATH::GVECTORF eyePosition = { 1.9f, 1.0f, -1.5f, 1.0f };
+		GW::MATH::GVECTORF lookAtPoint = { 0.0f, 0.0f, 0.0f, 1.0f }; 
+		GW::MATH::GVECTORF upDirection = { 0.0f, 1.0f, 0.0f, 0.0f }; 
 
 		// Use LookAtLHF to create the view matrix
 		if (math.LookAtLHF(eyePosition, lookAtPoint, upDirection, viewMatrix) != GW::GReturn::SUCCESS) {
@@ -177,20 +178,18 @@ private:
 	//part 3c self 
 	void CreateProjectionMatrix() {
 		GW::MATH::GMATRIXF projectionMatrix;
-		float fov = 60.0f * (M_PI / 180.0f); // Convert degrees to radians
+		float fov = 60.0f * (M_PI / 180.0f); //  degrees to radians
 		float nearPlane = 0.1f;
 		float farPlane = 100.0f;
 
-		// Get the aspect ratio from the Vulkan surface
 		float aspectRatio;
 		vlk.GetAspectRatio(aspectRatio);
 
-		// Create a DirectX-style perspective projection matrix
+		// DirectX-style perspective projection matrix
 		if (math.ProjectionDirectXLHF(fov, aspectRatio, nearPlane, farPlane, projectionMatrix) != GW::GReturn::SUCCESS) {
 			throw std::runtime_error("Failed to create DirectX-style projection matrix");
 		}
 
-		// Store the projection matrix for use in rendering
 		this->projectionMatrix = projectionMatrix;
 	}
 
@@ -244,57 +243,70 @@ private:
 		}
 	}
 	// 2f self 
+
+	// 2g self 
+	
+	void CreateDescriptorSet()
+	{
+		unsigned int imageCount;
+		vlk.GetSwapchainImageCount(imageCount);
+		descriptorSets.resize(imageCount); 
+
+		std::vector<VkDescriptorSetLayout> layouts(imageCount, descriptorSetLayout); 
+		VkDescriptorSetAllocateInfo allocInfo{};
+		allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+		allocInfo.descriptorPool = descriptorPool;
+		allocInfo.descriptorSetCount = imageCount; 
+		allocInfo.pSetLayouts = layouts.data(); 
+
+		if (vkAllocateDescriptorSets(device, &allocInfo, descriptorSets.data()) != VK_SUCCESS)
+		{
+			throw std::runtime_error("Failed to allocate descriptor sets!");
+		}
+	}
 	void CreateDescriptorPool()
 	{
+		unsigned int imageCount;
+		vlk.GetSwapchainImageCount(imageCount);
 		VkDescriptorPoolSize poolSize{};
 		poolSize.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-		poolSize.descriptorCount = 1;
+		poolSize.descriptorCount = imageCount; 
 
 		VkDescriptorPoolCreateInfo poolInfo{};
 		poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
 		poolInfo.poolSizeCount = 1;
 		poolInfo.pPoolSizes = &poolSize;
-		poolInfo.maxSets = 1;
+		poolInfo.maxSets = imageCount; 
 
 		if (vkCreateDescriptorPool(device, &poolInfo, nullptr, &descriptorPool) != VK_SUCCESS)
 		{
 			throw std::runtime_error("Failed to create descriptor pool!");
 		}
 	}
-	// 2g self 
-	void CreateDescriptorSet()
-	{
-		VkDescriptorSetAllocateInfo allocInfo{};
-		allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-		allocInfo.descriptorPool = descriptorPool;
-		allocInfo.descriptorSetCount = 1;
-		allocInfo.pSetLayouts = &descriptorSetLayout;
-
-		if (vkAllocateDescriptorSets(device, &allocInfo, &descriptorSet) != VK_SUCCESS)
-		{
-			throw std::runtime_error("Failed to allocate descriptor set!");
-		}
-	}
-	// 2h self 
 	void UpdateDescriptorSet()
 	{
-		VkDescriptorBufferInfo bufferInfo{};
-		bufferInfo.buffer = uniformBuffers[0];
-		bufferInfo.offset = 0;
-		bufferInfo.range = sizeof(SHADER_VARS);
+		unsigned int imageCount;
+		vlk.GetSwapchainImageCount(imageCount);
+		for (size_t i = 0; i < imageCount; i++) 
+		{
+			VkDescriptorBufferInfo bufferInfo{};
+			bufferInfo.buffer = uniformBuffers[i];
+			bufferInfo.offset = 0;
+			bufferInfo.range = sizeof(SHADER_VARS);
 
-		VkWriteDescriptorSet descriptorWrite{};
-		descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-		descriptorWrite.dstSet = descriptorSet;
-		descriptorWrite.dstBinding = 0;
-		descriptorWrite.dstArrayElement = 0;
-		descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-		descriptorWrite.descriptorCount = 1;
-		descriptorWrite.pBufferInfo = &bufferInfo;
+			VkWriteDescriptorSet descriptorWrite{};
+			descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+			descriptorWrite.dstSet = descriptorSets[i]; 
+			descriptorWrite.dstBinding = 0;
+			descriptorWrite.dstArrayElement = 0;
+			descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+			descriptorWrite.descriptorCount = 1;
+			descriptorWrite.pBufferInfo = &bufferInfo;
 
-		vkUpdateDescriptorSets(device, 1, &descriptorWrite, 0, nullptr);
+			vkUpdateDescriptorSets(device, 1, &descriptorWrite, 0, nullptr);
+		}
 	}
-
+	
 	void GetHandlesFromSurface()
 	{
 		if (vlk.GetDevice((void**)&device) != GW::GReturn::SUCCESS ||
@@ -309,22 +321,19 @@ private:
 	{
 		const int gridDensity = 25;
 		const float gridSpacing = 1.0f / gridDensity;
-		const int totalLines = (gridDensity + 1) * 2; // Horizontal and vertical lines
+		const int totalLines = (gridDensity + 1) * 2; 
 		const int verticesPerLine = 2;
 		const int totalVertices = totalLines * verticesPerLine;
 
 		std::vector<Vertex> verts(totalVertices);
 		int vertexIndex = 0;
 
-		// Create horizontal lines
 		for (int i = 0; i <= gridDensity; ++i)
 		{
 			float y = i * gridSpacing - 0.5f;
 			verts[vertexIndex++] = { -0.5f, y, 0.0f, 1.0f };
 			verts[vertexIndex++] = { 0.5f, y, 0.0f, 1.0f };
 		}
-
-		// Create vertical lines
 		for (int i = 0; i <= gridDensity; ++i)
 		{
 			float x = i * gridSpacing - 0.5f;
@@ -355,25 +364,44 @@ private:
 		InitializeGraphicsPipeline();
 	}
 	// self part 2i
+	//void UpdateUniformBuffer(uint32_t currentImage)
+	//{
+	//	SHADER_VARS shaderVars;
+
+	//	// Copy all six world matrices into the SHADER_VARS structure
+	//	memcpy(shaderVars.worldMatrix, worldMatrix, sizeof(worldMatrix));
+
+	//	shaderVars.viewMatrix = viewMatrix; // Copy view matrix
+	//	shaderVars.projectionMatrix = projectionMatrix; // Copy projection matrix
+
+	//	void* data;
+	//	// Map the uniform buffer memory for the current image
+	//	vkMapMemory(device, uniformBuffersMemory[currentImage], 0, sizeof(shaderVars), 0, &data);
+
+	//	// Copy the updated SHADER_VARS data into the uniform buffer
+	//	memcpy(data, &shaderVars, sizeof(shaderVars));
+
+	//	// Unmap the memory to make it accessible for the GPU
+	//	vkUnmapMemory(device, uniformBuffersMemory[currentImage]);
+	//}
+
 	void UpdateUniformBuffer(uint32_t currentImage)
 	{
 		SHADER_VARS shaderVars;
 
-		// Copy all six world matrices into the SHADER_VARS structure
 		memcpy(shaderVars.worldMatrix, worldMatrix, sizeof(worldMatrix));
 
-		shaderVars.viewMatrix = viewMatrix; // Copy view matrix
-		shaderVars.projectionMatrix = projectionMatrix; // Copy projection matrix
+		shaderVars.viewMatrix = viewMatrix;
+		shaderVars.projectionMatrix = projectionMatrix;
 
 		void* data;
-		// Map the uniform buffer memory for the current image
 		vkMapMemory(device, uniformBuffersMemory[currentImage], 0, sizeof(shaderVars), 0, &data);
 
-		// Copy the updated SHADER_VARS data into the uniform buffer
 		memcpy(data, &shaderVars, sizeof(shaderVars));
 
-		// Unmap the memory to make it accessible for the GPU
 		vkUnmapMemory(device, uniformBuffersMemory[currentImage]);
+
+		GvkHelper::write_to_buffer(device, uniformBuffersMemory[currentImage], &shaderVars, sizeof(shaderVars));
 	}
 
 	void CreateVertexBuffer(const void* data, unsigned int sizeInBytes)
@@ -708,6 +736,8 @@ private:
 public:
 	void Render()
 	{
+		try {
+
 		uint32_t currentImageIndex;
 		if (vlk.GetSwapchainCurrentImage(currentImageIndex) != GW::GReturn::SUCCESS) {
 			throw std::runtime_error("Failed to get current swapchain image index");
@@ -721,13 +751,15 @@ public:
 		shaderVars.worldMatrix = worldMatrix;
 		shaderVars.viewMatrix = viewMatrix;*/
 
+		viewMatrix = FreeLookCamera(win, viewMatrix);
 		
 
 		UpdateUniformBuffer(currentImageIndex);
 
 		// TODO: Part 2i // TODO: Part 4y
-		vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &descriptorSet, 0, nullptr);
-       
+		// vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &descriptorSet, 0, nullptr);
+		vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &descriptorSets[currentImageIndex], 0, nullptr);
+
 // TODO: Part 3g
 		const int gridDensity = 25;
 		const int totalLines = (gridDensity + 1) * 2;
@@ -735,6 +767,10 @@ public:
 		const int totalVertices = totalLines * verticesPerLine;
 
 		vkCmdDraw(commandBuffer, totalVertices, 6, 0, 0); // TODO: Part 1b		// changed to 6 instances 
+		}
+	catch (const std::exception& e) {
+		PrintLabeledDebugString("Exception in Render: ", e.what());
+	}
 	}
 
 	// TODO: Part 4b

@@ -2,7 +2,7 @@
 #define GATEWARE_ENABLE_CORE // All libraries need this
 #define GATEWARE_ENABLE_SYSTEM // Graphics libs require system level libraries
 #define GATEWARE_ENABLE_GRAPHICS // Enables all Graphics Libraries
-
+#define GATEWARE_ENABLE_INPUT
 // Ignore some graphics libraries we aren't going to use
 #define GATEWARE_DISABLE_GDIRECTX11SURFACE // we have another template for this
 #define GATEWARE_DISABLE_GDIRECTX12SURFACE // we have another template for this
@@ -35,7 +35,7 @@ int main()
 	{
 		// TODO: Part 1a
 		VkClearValue clrAndDepth[2];
-		clrAndDepth[0].color = { {0.329f, 0.316f, 0.016f, 1} }; // TODO: Part 1a (optional)
+		clrAndDepth[0].color = { {0.847f, 0.627f, 0.922f, 1} }; // TODO: Part 1a (optional)
 		clrAndDepth[1].depthStencil = { 1.0f, 0u };
 		msgs.Create([&](const GW::GEvent& e) {
 			GW::SYSTEM::GWindow::Events q;
