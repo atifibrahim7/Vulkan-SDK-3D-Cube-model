@@ -3,7 +3,7 @@
 #ifdef _WIN32 // must use MT platform DLL libraries on windows
 #pragma comment(lib, "shaderc_combined.lib") 
 #endif
-
+#include "Camera.h"
 void PrintLabeledDebugString(const char* label, const char* toPrint)
 {
 	std::cout << label << toPrint << std::endl;
@@ -44,15 +44,20 @@ class Renderer
 
 	// TODO: Part 2a
 	GW::MATH::GMatrix math;
-	GW::MATH::GMATRIXF worldMatrix;
+	GW::MATH::GMATRIXF worldMatrix[6];
 
 	// TODO: Part 2b
 	struct SHADER_VARS
 	{
-		GW::MATH::GMATRIXF worldMatrix;
-		float padding[44]; // Pad to 128 bytes (16 floats in GMATRIXF + 44 floats = 60 floats = 240 bytes)
+		GW::MATH::GMATRIXF worldMatrix[6];
+		// 3b 
+		GW::MATH::GMATRIXF viewMatrix;
+		//float padding[28]; // Pad to 128 bytes (16 floats in GMATRIXF + 44 floats = 60 floats = 240 bytes) -> Part 3b : 44 - 16 = 28  --> 3c : 28-16 = 12
+		GW::MATH::GMATRIXF projectionMatrix; 
+		float padding[12];
 	};
 	// TODO: Part 3a
+	GW::MATH::GMATRIXF viewMatrix;
 	// TODO: Part 3f 
 // TODO: Part 2c // TODO: Part 4y
 	std::vector<VkBuffer> uniformBuffers;
@@ -64,7 +69,9 @@ class Renderer
 	// TODO: Part 2g
 	VkDescriptorSet descriptorSet;
 	// TODO: Part 3c
+	GW::MATH::GMATRIXF projectionMatrix;
 	// TODO: Part 3d
+	
 	// TODO: Part 4a
 
 public:
@@ -79,7 +86,9 @@ public:
 
 		// TODO: Part 2e
 		// TODO: Part 3a
+		CreateViewMatrix();
 		// TODO: Part 3c
+		CreateProjectionMatrix();
 		// TODO: Part 3d
 		// TODO: Part 4a
 
@@ -96,27 +105,93 @@ private:
 #include <cmath>
 #include <corecrt_math_defines.h>
 	// part 2a 
+	//void InitializeWorldMatrix()
+	//{
+	//	GW::MATH::GMATRIXF   rotationMatrix, translatedMatrix;
+
+	//	// Start with an identity matrix
+	//	math.IdentityF(worldMatrix);  
+	//		
+	//	float rotationAngle = 90.0 * (M_PI / 180.0);
+
+	//	math.RotateXLocalF(worldMatrix, rotationAngle, rotationMatrix);
+
+	//	GW::MATH::GVECTORF translationVector = { 0.0, -0.2, 0.0, 0.0 };   // third arguement to get it on y -axis
+
+	//	math.TranslateLocalF(rotationMatrix, translationVector, translatedMatrix);
+
+	//	worldMatrix = translatedMatrix;
+	//}
 	void InitializeWorldMatrix()
 	{
-		GW::MATH::GMATRIXF   rotationMatrix, translatedMatrix;
+		GW::MATH::GVECTORF translationVector;
+		GW::MATH::GMATRIXF rotationMatrix, translatedMatrix, tempMatrix;
 
-		// Start with an identity matrix
-		math.IdentityF(worldMatrix);  // or IdentityD if needed for GMATRIXD
+		// wall 
+		math.IdentityF(worldMatrix[0]);
+		translationVector = { 0.0f, 0.0f, 0.5f, 0.0f };
+		math.TranslateLocalF(worldMatrix[0], translationVector, worldMatrix[0]);
+		//wall
+		math.IdentityF(worldMatrix[1]);
+		translationVector = { 0.0f, 0.0f, -1.0f, 0.0f };
+		math.TranslateLocalF(worldMatrix[0], translationVector, worldMatrix[1]);
 
-		// Convert 90 degrees to radians for double precision
-		float rotationAngle = 90.0 * (M_PI / 180.0);
 
-		// Rotate the matrix 90 degrees around the X axis (local rotation)
-		math.RotateXLocalF(worldMatrix, rotationAngle, rotationMatrix);
+		//rigth wall 
+		math.IdentityF(worldMatrix[2]);
+		math.RotateYLocalF(worldMatrix[2], M_PI / 2.0f, worldMatrix[2]);
+		translationVector = { 0.0f, 0.0f, 0.5f, 0.0f };
+		math.TranslateLocalF(worldMatrix[2], translationVector, worldMatrix[2]);
 
-		// Create a translation vector for Y axis translation (-0.5 units)
-		GW::MATH::GVECTORF translationVector = { 0.0, -0.5, 0.0, 0.0 };
+		//left wall
+		math.IdentityF(worldMatrix[3]);
+		math.RotateYLocalF(worldMatrix[3], M_PI / 2.0f, worldMatrix[3]);
+		translationVector = { 0.0f, 0.0f, -0.5f, 0.0f };
+		math.TranslateLocalF(worldMatrix[3], translationVector, worldMatrix[3]);
 
-		// Apply the translation to the rotated matrix
-		math.TranslateLocalF(rotationMatrix, translationVector, translatedMatrix);
+		//ceil
+		math.IdentityF(worldMatrix[4]);
+		math.RotateXLocalF(worldMatrix[4], M_PI / 2.0f, worldMatrix[4]);
+		translationVector = { 0.0f, 0.0f, 0.5f, 0.0f };
+		math.TranslateLocalF(worldMatrix[4], translationVector, worldMatrix[4]);
 
-		// Store the final result in worldMatrix
-		worldMatrix = translatedMatrix;
+		// floor
+		math.IdentityF(worldMatrix[5]);
+		math.RotateXLocalF(worldMatrix[5], M_PI / 2.0f, worldMatrix[5]);
+		translationVector = { 0.0f, 0.0f, -0.5f, 0.0f };
+		math.TranslateLocalF(worldMatrix[5], translationVector, worldMatrix[5]);
+	}
+	//self part 3a 
+	void CreateViewMatrix()
+	{
+		GW::MATH::GVECTORF eyePosition = { 1.9f, 1.0f, -1.5f, 1.0f };  // Moved camera back and up
+		GW::MATH::GVECTORF lookAtPoint = { 0.0f, 0.0f, 0.0f, 1.0f }; // Looking towards the origin
+		GW::MATH::GVECTORF upDirection = { 0.0f, 1.0f, 0.0f, 0.0f }; // Up direction vector
+
+		// Use LookAtLHF to create the view matrix
+		if (math.LookAtLHF(eyePosition, lookAtPoint, upDirection, viewMatrix) != GW::GReturn::SUCCESS) {
+			throw std::runtime_error("Failed to create view matrix");
+		}
+
+	}
+	//part 3c self 
+	void CreateProjectionMatrix() {
+		GW::MATH::GMATRIXF projectionMatrix;
+		float fov = 60.0f * (M_PI / 180.0f); // Convert degrees to radians
+		float nearPlane = 0.1f;
+		float farPlane = 100.0f;
+
+		// Get the aspect ratio from the Vulkan surface
+		float aspectRatio;
+		vlk.GetAspectRatio(aspectRatio);
+
+		// Create a DirectX-style perspective projection matrix
+		if (math.ProjectionDirectXLHF(fov, aspectRatio, nearPlane, farPlane, projectionMatrix) != GW::GReturn::SUCCESS) {
+			throw std::runtime_error("Failed to create DirectX-style projection matrix");
+		}
+
+		// Store the projection matrix for use in rendering
+		this->projectionMatrix = projectionMatrix;
 	}
 
 
@@ -279,17 +354,27 @@ private:
 		CompileShaders();
 		InitializeGraphicsPipeline();
 	}
-
-	void UpdateUniformBuffer(uint32_t currentImage) {
+	// self part 2i
+	void UpdateUniformBuffer(uint32_t currentImage)
+	{
 		SHADER_VARS shaderVars;
-		shaderVars.worldMatrix = worldMatrix;
+
+		// Copy all six world matrices into the SHADER_VARS structure
+		memcpy(shaderVars.worldMatrix, worldMatrix, sizeof(worldMatrix));
+
+		shaderVars.viewMatrix = viewMatrix; // Copy view matrix
+		shaderVars.projectionMatrix = projectionMatrix; // Copy projection matrix
 
 		void* data;
+		// Map the uniform buffer memory for the current image
 		vkMapMemory(device, uniformBuffersMemory[currentImage], 0, sizeof(shaderVars), 0, &data);
+
+		// Copy the updated SHADER_VARS data into the uniform buffer
 		memcpy(data, &shaderVars, sizeof(shaderVars));
+
+		// Unmap the memory to make it accessible for the GPU
 		vkUnmapMemory(device, uniformBuffersMemory[currentImage]);
 	}
-
 
 	void CreateVertexBuffer(const void* data, unsigned int sizeInBytes)
 	{
@@ -632,13 +717,13 @@ public:
 		SetUpPipeline(commandBuffer);
 
 		// TODO: Part 2b
-		SHADER_VARS shaderVars;
+	/*	SHADER_VARS shaderVars;
 		shaderVars.worldMatrix = worldMatrix;
+		shaderVars.viewMatrix = viewMatrix;*/
 
-		void* data;
-		vkMapMemory(device, uniformBuffersMemory[currentImageIndex], 0, sizeof(shaderVars), 0, &data); 
-		memcpy(data, &shaderVars, sizeof(shaderVars));  // Copy the updated data into the uniform buffer
-		vkUnmapMemory(device, uniformBuffersMemory[currentImageIndex]); 
+		
+
+		UpdateUniformBuffer(currentImageIndex);
 
 		// TODO: Part 2i // TODO: Part 4y
 		vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &descriptorSet, 0, nullptr);
@@ -649,7 +734,7 @@ public:
 		const int verticesPerLine = 2;
 		const int totalVertices = totalLines * verticesPerLine;
 
-		vkCmdDraw(commandBuffer, totalVertices, 1, 0, 0); // TODO: Part 1b		// changed to 6 points 
+		vkCmdDraw(commandBuffer, totalVertices, 6, 0, 0); // TODO: Part 1b		// changed to 6 instances 
 	}
 
 	// TODO: Part 4b
@@ -681,13 +766,21 @@ private:
 
 	void SetViewport(const VkCommandBuffer& commandBuffer)
 	{
-		VkViewport viewport = CreateViewportFromWindowDimensions();
+		VkViewport viewport = {};
+		viewport.x = 0.0f;
+		viewport.y = 0.0f;
+		viewport.width = static_cast<float>(windowWidth);
+		viewport.height = static_cast<float>(windowHeight);
+		viewport.minDepth = 0.0f;
+		viewport.maxDepth = 1.0f;
 		vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
 	}
 
 	void SetScissor(const VkCommandBuffer& commandBuffer)
 	{
-		VkRect2D scissor = CreateScissorFromWindowDimensions();
+		VkRect2D scissor = {};
+		scissor.offset = { 0, 0 };
+		scissor.extent = { windowWidth, windowHeight };
 		vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 	}
 
